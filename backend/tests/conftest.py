@@ -9,6 +9,8 @@ from app.main import app
 from app.models.entities import Organization, Location, UserProfile
 from app.core.auth import create_access_token
 
+from app.db.init_db import init_db
+
 # In-memory test SQLite DB
 SQLALCHEMY_TEST_DATABASE_URL = "sqlite:///:memory:"
 
@@ -22,6 +24,11 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
     Base.metadata.create_all(bind=test_engine)
+    session = TestingSessionLocal()
+    try:
+        init_db(session)
+    finally:
+        session.close()
     yield
     Base.metadata.drop_all(bind=test_engine)
 

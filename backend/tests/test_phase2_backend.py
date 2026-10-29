@@ -32,11 +32,9 @@ def test_auth_login_and_me(client):
 
 def test_rbac_restrictions(client):
     """Verify that role-based permissions are enforced on protected endpoints."""
-    # Kitchen staff token
     k_login = client.post("/api/auth/login", json={"persona": "kitchen"}).json()
     k_headers = {"Authorization": f"Bearer {k_login['access_token']}"}
 
-    # Supervisor token
     s_login = client.post("/api/auth/login", json={"persona": "supervisor"}).json()
     s_headers = {"Authorization": f"Bearer {s_login['access_token']}"}
 
@@ -56,6 +54,14 @@ def test_rbac_restrictions(client):
     )
     assert res_deact.status_code == 403
 
+    # 3. Kitchen staff attempting supervisor severity override -> 403 Forbidden
+    res_ov = client.post(
+        "/api/feedback/fb-001/override-severity",
+        json={"new_severity": "LOW", "reason": "Kitchen says it is fine"},
+        headers=k_headers
+    )
+    assert res_ov.status_code == 403
+
 
 def test_cross_branch_data_isolation(client):
     """Verify supervisor cannot access or leak data from unassigned branches."""
@@ -74,6 +80,10 @@ def test_cross_branch_data_isolation(client):
     # 3. Supervisor requests metrics for branch-1 (assigned) -> 200 OK
     res_b1 = client.get("/api/metrics/dashboard?branch_id=branch-1", headers=s_headers)
     assert res_b1.status_code == 200
+
+    # 4. Supervisor requests feedback detail for unassigned branch-3 feedback -> 403 Forbidden
+    res_fb3 = client.get("/api/feedback/fb-007", headers=s_headers)
+    assert res_fb3.status_code == 403
 
 
 def test_public_feedback_intake_and_tracking(client):
@@ -281,3 +291,47 @@ def test_staff_deactivation_governance(client):
     )
     assert res_react.status_code == 200
     assert res_react.json()["is_active"] is True
+
+
+def test_staff_branch_transfer(client):
+    """Verify administrator can transfer staff between branches, creating an audit log."""
+    a_login = client.post("/api/auth/login", json={"persona": "admin"}).json()
+    a_headers = {"Authorization": f"Bearer {a_login['access_token']}"}
+
+    # Transfer user-kitchen to both branch-1 and branch-2
+    res_transfer = client.post(
+        "/api/staff/user-kitchen/branches",
+        json={"branch_ids": ["branch-1", "branch-2"]},
+        headers=a_headers
+    )
+    assert res_transfer.status_code == 200
+    updated_branches = res_transfer.json()["branch_ids"]
+    assert "branch-1" in updated_branches
+    assert "branch-2" in updated_branches
+
+
+def test_notifications_and_audit_logs(client):
+    """Verify notification read state toggles and audit log inspection."""
+    s_login = client.post("/api/auth/login", json={"persona": "supervisor"}).json()
+    s_headers = {"Authorization": f"Bearer {s_login['access_token']}"}
+
+    # Get notifications
+    res_notif = client.get("/api/notifications", headers=s_headers)
+    assert res_notif.status_code == 200
+    notifications = res_notif.json()
+    assert isinstance(notifications, list)
+
+    # Mark all read
+    res_read_all = client.post("/api/notifications/read-all", headers=s_headers)
+    assert res_read_all.status_code == 200
+    assert res_read_all.json()["status"] == "success"
+
+    # Get Audit logs
+    a_login = client.post("/api/auth/login", json={"persona": "admin"}).json()
+    a_headers = {"Authorization": f"Bearer {a_login['access_token']}"}
+    res_audit = client.get("/api/audit-logs", headers=a_headers)
+    assert res_audit.status_code == 200
+    audit_entries = res_audit.json()
+    assert len(audit_entries) > 0
+    assert "action" in audit_entries[0]
+    assert "actor_name" in audit_entries[0]
