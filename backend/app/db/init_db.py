@@ -305,6 +305,69 @@ def init_db(db: Session = None) -> None:
             db.add_all([t1, t2])
             db.commit()
 
+        # Seed initial notifications if empty
+        if db.query(Notification).count() == 0:
+            now = datetime.now(timezone.utc)
+            n1 = Notification(
+                organization_id=org.id,
+                title="CRITICAL ALERT: Raw Poultry Incident",
+                message="Undercooked chicken reported at Downtown Bistro (FB-2026-901). Priority 96.",
+                notification_type="SEVERE_ALERT",
+                target_roles=["SUPERVISOR", "ADMIN"],
+                location_id="branch-1",
+                related_record_type="FEEDBACK",
+                related_record_id="fb-001",
+                is_read=False,
+                created_at=now - timedelta(hours=2),
+            )
+            n2 = Notification(
+                organization_id=org.id,
+                title="New Corrective Action Assigned",
+                message="You have been assigned to calibrate poultry line probe (task-101).",
+                notification_type="TASK_ASSIGNED",
+                target_roles=["KITCHEN_STAFF"],
+                location_id="branch-1",
+                staff_id="user-kitchen",
+                related_record_type="TASK",
+                related_record_id="task-101",
+                is_read=False,
+                created_at=now - timedelta(hours=2),
+            )
+            db.add_all([n1, n2])
+            db.commit()
+
+        # Seed initial audit logs if empty
+        if db.query(AuditLog).count() == 0:
+            now = datetime.now(timezone.utc)
+            a1 = AuditLog(
+                organization_id=org.id,
+                user_id="user-supervisor",
+                user_email="supervisor@feedbackiq.hotel",
+                actor_name="Maria Chen",
+                actor_role="SUPERVISOR",
+                location_id="branch-1",
+                action="SCHEDULE_APPROVED_AND_ASSIGNED",
+                entity_type="TASK",
+                entity_id="task-101",
+                details="Approved 4-hour SLA deadline. Assigned to Marco Rossi.",
+                created_at=now - timedelta(hours=3),
+            )
+            a2 = AuditLog(
+                organization_id=org.id,
+                user_id="user-admin",
+                user_email="admin@feedbackiq.hotel",
+                actor_name="Sarah Jenkins",
+                actor_role="ADMIN",
+                location_id="branch-2",
+                action="STAFF_BRANCH_REASSIGNED",
+                entity_type="STAFF",
+                entity_id="user-kitchen-2",
+                details="Assigned Elena Rostova to Westside Gourmet Kitchen (BR-02).",
+                created_at=now - timedelta(days=1),
+            )
+            db.add_all([a1, a2])
+            db.commit()
+
     finally:
         if close_after:
             db.close()
